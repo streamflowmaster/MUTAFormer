@@ -1,4 +1,4 @@
-# MUTAFormer
+# Closed-loop Transformer-guided thermodynamic landscapes for programmable mutation detection
 ### Transformer-guided small-panel design
 
 **From cohort mutation profiles to interpretable candidate selection and blocker screening.**
