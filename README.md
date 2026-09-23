@@ -1,47 +1,70 @@
-# MUTAFormer Small Panel Design Tool
+# MUTAFormer
+### Transformer-guided small-panel design
 
-Research code for cohort-specific mutation modeling, permutation attribution,
-candidate mutation selection, blocker design, and RF-based blocker screening.
-This is a curated source release, not a distribution of patient data or a claim
-that a fresh training run reproduces every historical manuscript result.
+**From cohort mutation profiles to interpretable candidate selection and blocker screening.**
 
-## Workflow
+MUTAFormer brings together mutation-based classification, feature attribution,
+and sequence-aware blocker design in a single research workflow. Researchers can
+train a cohort-specific Transformer, identify candidate mutations, and prioritize
+blockers using predicted P(dCt > 8).
 
-1. Upload a labeled mutation cohort and a mutation annotation table.
-2. Retrain the original mutation-only Transformer on the submitted cohort.
-3. Calculate Captum FeaturePermutation attribution on the original test split.
-4. Select mutations whose exported attribution magnitude exceeds the threshold.
-5. Retrieve hg38 flanking sequences and design blockers using NUPACK.
-6. Predict **P(dCt > 8)** using a separately provisioned RF classifier and rank candidates.
+**[Launch the web tool →](https://dna-panel.mmspectra.cn/)** ·
+[Quick start](#quick-start) · [Input format](#input-format) ·
+[Reproducing an analysis](#reproducing-an-analysis)
 
-The web workflow is mutation-only; it does **not** train the Gene+Protein model.
-The original protein and Small-panel scripts are included as research references.
-Those scripts require private workbooks, panel mapping, and experiment-specific
-configuration; they are not a ready-to-run external validation suite.
+## Overview
 
-## Source map
+MUTAFormer connects model interpretation with small-panel development:
 
-| Files under `gene_with_order/` | Purpose |
-| --- | --- |
-| `models.py`, `models_for_explain.py` | Transformer and explanation wrapper |
-| `train.py`, `dataset_qPCR.py`, `load_as_dict.py` | Original training, splits, tokenization and VAF handling |
-| `explain.py` | Original Captum attribution calculation |
-| `retrain_with_plexfilter.py`, `dataset_pannel.py` | Original Small-panel training/filtering |
-| `train_with_protein.py`, `dataset_pannel_protein.py` | Original Gene+Protein training |
-| `dataset_pannel_blood.py`, `dataset_pannel_tissue.py` | Original external cohort loaders |
-| `web/legacy_engine.py` | Isolated subprocess adapter; exports provenance and predictions |
-| `web/pipeline.py` | Input checks, annotation, sequence, blocker and RF stages |
-| `web/server.py` | Flask upload/job/status/download API |
-| `web/index.html`, `web/app.js`, CSS files | English web interface |
-| `web/data/demo_*.csv` | Synthetic examples, not patient data |
+- **Cohort-specific modeling:** train a Transformer using labeled mutation and
+  variant allele frequency (VAF) data.
+- **Attribution-guided selection:** quantify mutation contributions with Captum
+  FeaturePermutation and select candidates by attribution magnitude.
+- **Sequence-aware design:** retrieve hg38 flanking sequences and design blockers
+  using NUPACK thermodynamic calculations.
+- **RF screening:** estimate the probability that a blocker achieves dCt > 8
+  and rank candidates using attribution, mutation frequency and predicted performance.
+- **Traceable analysis:** export model settings, source hashes, patient predictions
+  and intermediate results for review and reproducibility.
 
-Keep the inner directory name `gene_with_order`: legacy imports depend on it.
-The outer repository can have any name.
+```text
+Labeled cohort + mutation annotations
+                  ↓
+       Transformer training
+                  ↓
+ Permutation attribution + frequency
+                  ↓
+ Candidate selection → hg38 sequences
+                  ↓
+    Blocker design → RF screening
+                  ↓
+    Small-panel recommendations
+```
 
-## Linux quick start
+This repository provides the model, attribution and web workflow source code
+supporting the study. Gene+Protein and Small-panel training scripts are also
+included. The interactive panel-design workflow currently trains a
+**mutation-only** model; it is separate from the Gene+Protein evaluation scripts.
 
-Python 3.10 is recommended for compatibility with the previously used NUPACK wheel.
-From the repository root:
+## Try it online
+
+Visit **[dna-panel.mmspectra.cn](https://dna-panel.mmspectra.cn/)** to explore the
+workflow without installing the software.
+
+Choose the server-held **RFData example**, or select **Upload my own dataset**
+to analyze a labeled cohort with its mutation annotations. The RFData example
+displays aggregate results and mutation recommendations; its source data and
+patient-level outputs are not available for download.
+
+For sensitive cohorts, use a local installation and follow your institution's
+data-governance requirements. Upload only data you are authorized to process on
+the hosted service. A new training run may select a different panel from the
+one reported in the study.
+
+## Quick start
+
+Linux and Python 3.10 are recommended for the complete sequence/blocker workflow.
+From the root of your downloaded repository:
 
 ```bash
 python3.10 -m venv .venv
@@ -50,149 +73,136 @@ python -m pip install -r gene_with_order/web/requirements.txt
 python gene_with_order/web/server.py
 ```
 
-Open http://127.0.0.1:8000/ (do not open the HTML through `file://`).
-Select **Upload my own dataset**, or use **Run demo with example data** for the
-small synthetic demonstration. The public source edition defaults to uploads.
-The private RFData option requires administrator-provided resources listed below.
+Open **http://127.0.0.1:8000/** in your browser. The source distribution defaults
+to uploading your own data. Synthetic examples are included in
+[`gene_with_order/web/data/`](gene_with_order/web/data), and the interface offers
+a small demonstration run.
 
-For the supplied background launcher:
+**For complete blocker screening**, install an authorized NUPACK distribution
+and supply the RF classifier and feature schema. These resources are not bundled;
+see [resources and reproducibility notes](docs/REPRODUCIBILITY.md).
+Training and attribution do not require the private RFData workbook.
+Keep the inner directory name `gene_with_order`, which is used by package imports.
 
-```bash
-PANEL_PYTHON="$PWD/.venv/bin/python" PANEL_HOST=127.0.0.1 bash gene_with_order/web/start_server.sh
-bash gene_with_order/web/stop_server.sh
-```
+## Input format
 
-Requirements define compatibility ranges, not a fully frozen environment.
-Save `python -m pip freeze` alongside each experiment. Different PyTorch versions,
-seeds and data order can change the selected panel.
+Both tables accept CSV or Excel. Downloadable templates are available in the web
+interface.
 
-## Required inputs
+### 1. Cohort mutation database
 
-**Cohort database:** Excel or CSV, one sample/mutation per row.
+One sample–mutation pair per row:
 
-```csv
-Sample_ID,Class,mut_pos,VAF
-EXAMPLE_001,HCC,chr17:7674216,0.125
-EXAMPLE_002,nonHCC,chr5:1295113,0.032
-EXAMPLE_003,nonHCC,,
-```
+| Sample_ID | Class | mut_pos | VAF |
+| --- | --- | --- | --- |
+| EXAMPLE_001 | HCC | chr17:7674216 | 0.125 |
+| EXAMPLE_002 | nonHCC | chr5:1295113 | 0.032 |
+| EXAMPLE_003 | nonHCC | | |
 
-**Mutation annotation:** Excel or CSV, required even when cohort columns overlap.
+Use hg38, 1-based mutation coordinates and VAF fractions between 0 and 1.
+Represent a mutation-free patient with one row containing blank `mut_pos` and
+`VAF`. Provide exactly two classes and select the positive class label in the UI.
 
-```csv
-mut_pos,Ref,Allele
-chr17:7674216,C,A
-chr5:1295113,G,A
-```
+### 2. Mutation annotation table
 
-Coordinates are hg38, 1-based. VAF is a fraction in [0,1]; the historical `-`
-sentinel is also retained. Use one blank mutation/VAF row for mutation-free
-patients. Exactly two classes and at least 10 independent patients per class are
-required. Vocabulary size cannot exceed the number of distinct mutations.
-The upload limit is 50 MiB for the combined request. Templates are available in
-the interface. Example rows above illustrate format, not a sufficient training set.
+| mut_pos | Ref | Allele |
+| --- | --- | --- |
+| chr17:7674216 | C | A |
+| chr5:1295113 | G | A |
 
-## Attribution and selection semantics
+Mutation identifiers must match the cohort database. Use `-` for an empty allele
+in an insertion/deletion. The annotation table is required.
 
-`explain.py` uses **FeaturePermutation**, not attention weights or SHAP.
-The adapter preserves shuffled explanation batches of 4, target labels, RNG call
-order and the original duplicate-index accumulation. It saves signed attribution,
-then uses `abs(raw[1:])` for the exported mutation attribution.
+At least 10 independent patients per class are required by the implemented
+70/10/20 split. Vocabulary size must not exceed the number of distinct mutations.
+These are software constraints, not recommendations for adequate study size.
+The combined upload limit is 50 MiB.
 
-Consequently the default `attribution > 0` selects **nonzero magnitude**, not
-positive signed evidence for cancer. Frequency counts all cohort mutation
-occurrences, not necessarily unique patients. A frequency table is merged with
-attribution and sorted; no guarantee of the historical 74 mutations is made.
+## How candidates are selected
 
-Downstream blocker screening accepts groups with maximum branch probability at
-least 0.5 by default, keeps up to 50 by summed attribution, then sorts by summed
-frequency and a tie score averaging mean RF probability with normalized summed
-attribution. It returns top K (default 10). `P(dCt>8)` is a classification
-probability, **not a predicted continuous dCt**.
+1. Compute permutation attribution and retain its signed values for inspection.
+2. Use **absolute attribution magnitude** for candidate selection; the default
+   threshold `attribution > 0` means nonzero magnitude, not positive signed evidence.
+3. Attach mutation occurrence counts from the cohort and retrieve reference sequences.
+4. Design blockers and predict each mutation branch's **P(dCt > 8)**.
+5. Retain blocker groups whose maximum branch probability meets the threshold
+   (default 0.5); keep up to 50 by summed attribution, then rank by summed frequency
+   and a tie score combining mean probability and normalized attribution.
+6. Return the requested number of recommendations (default 10).
 
-## Optional/private resources (not committed)
+The RF output is a **classification probability**, not a continuous dCt estimate.
+Recommendations require experimental validation.
 
-| Resource | Expected location / requirement |
+## Reproducing an analysis
+
+For a reproducible run, preserve:
+
+- The exact cohort and annotation files, including row order.
+- Panel mapping, class encoding, split assignments and random seed.
+- Model configuration, checkpoint and software environment.
+- Training, inference and explanation batch settings.
+
+The web workflow saves outputs under `gene_with_order/web/runs/<job_id>/`.
+Depending on completed stages, these include:
+
+| Output | Contents |
 | --- | --- |
-| RF classifier + feature schema | `gene_with_order/web/data/predict_dCt/predict_dCt/Data/processed/rf_model.joblib` and `feature_columns.json` |
-| NUPACK | Install an authorized, platform-compatible distribution into the same Python environment; previously used version 4.0.2 |
-| Private RFData example | `gene_with_order/RFdata_hg38_VAF_Revised.xlsx` and `gene_with_order/blocker_design(1).zip` containing its original annotation resources |
-| Historical artifact replay | Same private resources plus original archived attribution/sequence/blocker tables |
-| Original Small-panel studies | Private cohort workbooks, `plex_mapping.xlsx`, original checkpoints/settings as referenced in the scripts |
+| `run_manifest.json` | Configuration, source hashes, model hash and runtime versions |
+| `sample_splits.csv` | Patient split assignments |
+| `diagnosis_results.xlsx` | Test-set predictions and probabilities |
+| `test_predictions.npz` | Test labels, probabilities, logits and batch information |
+| `attribution_frequency.xlsx` | Mutation attribution and occurrence frequency |
+| `mutation_candidate_withseq.xlsx` | Candidate mutations and flanking sequences |
+| `design_blockers_with_energy.xlsx` | Blocker designs and calculated energies |
+| `small_panel_recommendations.csv` | Ranked blocker recommendations |
 
-Only load trusted joblib/PyTorch model files: these formats may execute code.
-Model weights, licensed binaries, patient workbooks and historical archives are
-intentionally excluded. Provisioning them is separate from publishing source.
-Without NUPACK, a sequence-completed partial result is expected. Without the RF
-model/schema, final RF prediction cannot run. The synthetic demo therefore is
-not an unconditional end-to-end design test on a bare installation.
-The current health endpoint's RF flag is not an artifact-integrity check.
+Web defaults are 10 Transformer layers, 16 attention heads, embedding dimension
+64, dropout 0.1, seed 11, 20 epochs, learning rate 0.0001, vocabulary size 250,
+sequence length 15 and training/evaluation batch size 64. Explanation uses batches
+of 4. The synthetic demonstration uses smaller settings.
 
-## Outputs and reproducibility
+Reproducing a specific study result requires its matching data, checkpoint and
+configuration—not just the web defaults. Private cohorts, trained weights and
+experiment archives are not included in this source release. Small-panel and
+Gene+Protein scripts require their corresponding datasets and panel mappings;
+a complete, one-command reproduction of all study experiments is not provided.
 
-Each new job writes to `gene_with_order/web/runs/<job_id>/` (git-ignored).
-Artifacts may include model weights, split assignments, training history,
-patient probabilities/logits, raw attribution, candidate sequences, blockers,
-RF branch predictions and panel recommendations. `run_manifest.json` records
-settings, source hashes, versions and model hash.
+See [reproducibility notes](docs/REPRODUCIBILITY.md) for resource locations,
+implementation details and interpretation limits.
 
-Defaults: 10 layers, 16 heads, embedding 64, dropout 0.1, seed 11, 20 epochs,
-learning rate 0.0001, vocabulary 250, sequence length 15, train/test batch 64.
-The synthetic demo uses smaller settings. These are not the four-layer
-Small-panel experiments, and the web learning-rate default differs from saved
-historical 0.001 configurations.
+## Code guide
 
-**Important retained limitations:**
+| Location under `gene_with_order/` | Function |
+| --- | --- |
+| `models.py`, `models_for_explain.py` | Transformer architecture and attribution wrapper |
+| `train.py`, `dataset_qPCR.py`, `load_as_dict.py` | Training, data splits and mutation encoding |
+| `explain.py` | Captum FeaturePermutation attribution |
+| `retrain_with_plexfilter.py`, `dataset_pannel.py` | Small-panel modeling |
+| `train_with_protein.py`, `dataset_pannel_protein.py` | Gene+Protein modeling |
+| `dataset_pannel_blood.py`, `dataset_pannel_tissue.py` | External cohort loaders |
+| `web/` | Browser interface, job API and panel-design pipeline |
 
-- The original Transformer layout permits cross-patient interaction within a
-  batch. Predictions can depend on batch composition and ordering.
-- Vocabulary uses the full cohort; attribution uses the test split for panel
-  discovery. This test set is not an untouched final panel validation cohort.
-- Positive training cases are duplicated; cross-entropy consumes probabilities;
-  the original live `state_dict` snapshot behavior is retained.
-- The original unknown-token attribution alias is retained.
-- Legacy micro-AUC flattens two-class one-hot labels and both output columns.
-  Patient AUROC uses HCC labels and the HCC output column. They are not interchangeable.
-- A historical chr17:7674194 annotation correction (GT to deletion) is retained.
-- NUPACK exceptions currently warn and fall back to zero energy. This occurred
-  in Linux diagnostics; inspect logs and do not interpret affected RF predictions
-  as validated thermodynamic results.
+## Verification
 
-These behaviors are documented for compatibility, not endorsed as best practice.
-No clinical diagnostic claim is made. Independent, leakage-controlled validation
-is needed for new panels. Historical notes in `web/README.md` describe earlier
-experiments, **not tests rerun for this source release**.
-
-## Public deployment and privacy
-
-Bind the local service to loopback and place a reviewed HTTPS reverse proxy or
-Cloudflare Tunnel in front of it. Tunnel credentials and tokens must never be
-committed. Do not expose the project directory as a static file server.
-The Flask development server is not a hardened production deployment.
-Add authentication, rate/concurrency limits, retention/deletion policies and
-upload safeguards before handling sensitive data publicly.
-
-Jobs are in process memory; restarting loses status/download registrations.
-Multiple independent web workers are not supported by this job store.
-Private RFData jobs suppress downloads; uploaded-cohort jobs export patient-level
-artifacts through job URLs, which must be treated as sensitive bearer links.
-Mutational coordinates are sent to the UCSC API for sequence retrieval.
-
-The source includes JSON API error handling. An `Unexpected token '<'` browser
-error means HTML was parsed as JSON, often from an error page/proxy. Inspect the
-actual HTTP status/body. Copying this directory does not update a running Linux
-deployment; deploy and restart separately. Public large-upload timeouts remain
-an unresolved deployment issue, not a certified fix in this release.
-
-## Checks and publication
+Run the data-free release checks from the repository root:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-These are source-release smoke tests, not a historical numerical parity claim.
-Review `SOURCE_MANIFEST.json` for included files and original hashes.
-Only push the contents of this release directory, **not the parent research
-workspace**. No remote repository is created or updated by this export.
-Before publication, select a license and add the verified manuscript citation;
-neither a redistribution license nor a publication identifier is assumed here.
+These checks cover syntax, imports, synthetic inputs, JSON API errors and exclusion
+of private workbook/model artifacts. They do not replace scientific validation or
+a full end-to-end test. `SOURCE_MANIFEST.json` records the release file hashes.
+
+## Research use and data availability
+
+MUTAFormer is a research tool, not a clinical diagnostic service. Candidate panels
+require independent evaluation and experimental validation. The implementation
+has batch-dependent predictions and uses test-split attribution for panel discovery;
+that split must not be treated as an untouched final validation cohort.
+Thermodynamic calculation failures also require review before interpreting RF results.
+
+Patient-level data and licensed dependencies are not distributed with this
+repository. The hosted example does not grant access to its underlying cohort.
+For implementation details and deployment precautions, see the
+[technical notes](docs/REPRODUCIBILITY.md) and [web documentation](gene_with_order/web/README.md).
