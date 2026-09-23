@@ -1,0 +1,8 @@
+.training-settings{margin-top:22px;padding:18px;background:#f4f9f9;border-left:3px solid var(--teal)}
+.settings-title{display:flex;justify-content:space-between;align-items:center}
+.settings-title span{color:var(--muted);font-size:.8rem}
+.training-settings .settings{grid-template-columns:repeat(3,1fr);margin-top:18px}
+.annotation-head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:24px 0 10px}.annotation-head p{margin:3px 0;color:var(--muted);font-size:.82rem}.annotation-head .field-label{margin:0}.annotation-head+.dropzone{min-height:125px}
+@media(max-width:900px){.training-settings .settings{grid-template-columns:1fr 1fr}}
+.run-actions{display:grid;grid-template-columns:minmax(220px,.7fr) 1fr;gap:12px;margin-top:26px}.run-actions .run-button{margin-top:0}.demo-button{border:1px solid var(--teal);background:#fff;color:var(--teal);padding:9px 16px;cursor:pointer;text-align:left;font:inherit}.demo-button span,.demo-button small{display:block}.demo-button span{font-weight:750}.demo-button small{color:var(--muted);margin-top:2px}.demo-button:hover{background:#f1fafa}.demo-button:disabled{opacity:.55;cursor:wait}
+@media(max-width:550px){.training-settings .settings,.run-actions{grid-template-columns:1fr}.settings-title,.annotation-head{display:block}.annotation-head .downloads{justify-content:flex-start;margin-top:10px}}

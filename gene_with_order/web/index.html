@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Upload mutation data to retrain MUTAFormer, calculate mutation attribution, extract hg38 sequences, design blockers, and screen by predicted dCt." />
+  <title>MUTAFormer Small Panel Design Tool</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="training.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">M</span><div><strong>MUTAFormer</strong><small>Small Panel Design Tool</small></div></div>
+    <div id="runtime" class="runtime"><span></span>Checking compute environment</div>
+  </header>
+  <main class="workspace">
+    <aside class="sidebar">
+      <h2>Workflow</h2>
+      <ol id="step-list">
+        <li class="active"><span>1</span><div><b>Upload data</b><small>Samples, classes, mutations, and VAF</small></div></li>
+        <li><span>2</span><div><b>Model analysis</b><small>Diagnosis and mutation attribution</small></div></li>
+        <li><span>3</span><div><b>Sequence extraction</b><small>hg38, mutation site ±100 bp</small></div></li>
+        <li><span>4</span><div><b>Blocker design</b><small>NUPACK energy calculation</small></div></li>
+        <li><span>5</span><div><b>dCt screening</b><small>RF prediction and panel selection</small></div></li>
+      </ol>
+      <div class="method-note">
+        <b>Required input formats</b>
+        <p>Cohort database — one mutation per row. Keep a mutation-free patient as one row with blank mut_pos and VAF:</p>
+        <code>Sample_ID<br>Class<br>mut_pos<br>VAF</code>
+        <p>Mutation annotation table — one mutation per row:</p>
+        <code>mut_pos<br>Ref<br>Allele</code>
+      </div>
+    </aside>
+    <section class="main-panel">
+      <div class="page-head">
+        <div><p class="kicker">NEW PANEL RUN</p><h1>Design a small panel</h1><p>Upload your own cohort and annotation data, configure the analysis, and run the complete workflow.</p></div>
+        <div class="downloads"><a href="/api/template/database">Download cohort template</a><a href="/api/demo/database">Example cohort</a><a href="/api/demo/annotation">Example annotation</a></div>
+      </div>
+      <form id="run-form" class="form-card">
+        <div id="full-fields">
+          <label class="field-label" for="input-source">Input dataset</label>
+          <select id="input-source">
+            <option value="demo">Private RFData example — administrator setup required</option>
+            <option value="upload" selected>Upload my own dataset</option>
+          </select>
+          <p id="dataset-note">RFData and its matching mutation annotations are loaded on the server. No upload required. Uses 20 epochs, seed 11 and vocabulary size 250. Raw data, trained weights and patient-level outputs cannot be downloaded; aggregate results and panel recommendations are displayed. New training does not guarantee the historical panel.</p>
+          <div id="upload-fields" hidden>
+          <label class="field-label" for="database">Cohort mutation database <span>Required</span></label>
+          <label class="dropzone" id="database-zone" for="database">
+            <input id="database" name="database" type="file" accept=".xlsx,.xls,.csv" />
+            <span class="upload-icon">↑</span><b>Select or drop an Excel/CSV file</b><small id="database-name">Maximum file size: 50 MB</small>
+          </label>
+          <div class="annotation-head">
+            <div><label class="field-label" for="annotation">Mutation annotation table <span>Required</span></label><p>Required columns: <code>mut_pos</code>, <code>Ref</code>, and <code>Allele</code>. Mutation identifiers must match the cohort database.</p></div>
+            <div class="downloads"><a href="/api/template/annotation">Download annotation template</a></div>
+          </div>
+          <label class="dropzone" id="annotation-zone" for="annotation">
+            <input id="annotation" name="annotation" type="file" accept=".xlsx,.xls,.csv" />
+            <span class="upload-icon">↑</span><b>Select or drop an Excel/CSV annotation file</b><small id="annotation-name">Maximum file size: 50 MB</small>
+          </label>
+          </div>
+          <div class="training-settings" id="training-fields" hidden>
+            <div class="settings-title"><b>Original-script protocol</b><span>Legacy retraining uses the root training and Captum scripts. Archive replay reuses saved historical artifacts; it is not new training.</span></div>
+            <label for="analysis-protocol">Analysis protocol</label>
+            <select id="analysis-protocol" name="analysis_protocol">
+              <option value="legacy_retrain">Legacy retraining — uploaded cohort</option>
+              <option value="paper_archive">Historical artifact replay — project RFData reference only</option>
+            </select>
+            <p id="protocol-note">10 layers · 70/10/20 patient split · batch 64 · Captum batch 4 · positive class = 0. The original full-cohort vocabulary, class duplication, checkpoint-reference behavior and cross-patient attention are retained. New training does not guarantee the historical 74 mutations.</p>
+            <p>Attribution is exported as absolute magnitude, not signed positive evidence. The test split participates in panel discovery and is not an independent final panel validation set. Research use only.</p>
+            <div class="settings">
+              <div><label for="positive-class">Positive class</label><input id="positive-class" name="positive_class" value="HCC" placeholder="Exact value in the Class column" /></div>
+              <div><label for="epochs">Training epochs</label><input id="epochs" name="epochs" type="number" value="20" min="1" max="500" /></div>
+              <div><label for="seed">Random seed</label><input id="seed" name="seed" type="number" value="11" /></div>
+              <div><label for="vocab-size">Vocabulary size</label><input id="vocab-size" name="vocab_size" type="number" value="250" min="4" max="5000" /></div>
+              <div><label for="block-size">Maximum mutations per sample</label><input id="block-size" name="block_size" type="number" value="15" min="1" max="256" /></div>
+              <div><label for="learning-rate">Learning rate</label><input id="learning-rate" name="learning_rate" type="number" value="0.0001" min="0.000001" max="1" step="any" /></div>
+            </div>
+          </div>
+        </div>
+        <div id="dct-fields" hidden>
+          <label class="field-label" for="blockers">Blocker design table <span>Required</span></label>
+          <label class="dropzone" id="blockers-zone" for="blockers">
+            <input id="blockers" name="blockers" type="file" accept=".xlsx,.xls,.csv" />
+            <span class="upload-icon">↑</span><b>Upload design_blockers_with_energy.xlsx or predict_*.csv</b><small id="blockers-name">Both column structures are detected automatically</small>
+          </label>
+        </div>
+        <div class="settings filter-settings">
+          <div><label for="attr-threshold">Absolute attribution threshold</label><input id="attr-threshold" name="attr_threshold" type="number" value="0" step="0.000001" /></div>
+          <div><label for="cluster-distance">Clustering distance (bp)</label><input id="cluster-distance" name="cluster_distance" type="number" value="15" min="0" max="100" /></div>
+          <div><label for="prob-threshold">dCt&gt;8 probability threshold</label><input id="prob-threshold" name="prob_threshold" type="number" value="0.5" min="0" max="1" step="0.01" /></div>
+          <div><label for="top-k">Panel size</label><input id="top-k" name="top_k" type="number" value="10" min="1" max="100" /></div>
+        </div>
+        <div id="form-error" class="message error" hidden></div>
+        <div class="run-actions">
+          <button id="demo-button" class="demo-button" type="button"><span>Run demo with example data</span><small>No upload required · 3 training epochs</small></button>
+          <button id="run-button" class="run-button" type="submit"><span>Run panel design</span><i>→</i></button>
+        </div>
+      </form>
+      <section id="progress-panel" class="progress-card" hidden>
+        <div class="progress-head"><div><p class="kicker">RUN STATUS</p><h2 id="progress-title">Preparing data</h2></div><b id="progress-percent">0%</b></div>
+        <div class="progress-track"><span id="progress-bar"></span></div><p id="progress-detail">Files uploaded. Waiting for analysis.</p>
+      </section>
+      <section id="result-panel" class="result-panel" hidden>
+        <div class="result-head"><div><p class="kicker">PANEL RESULT</p><h2>Recommended candidates</h2></div><div id="downloads" class="downloads"></div></div>
+        <div id="metrics" class="metrics"></div>
+        <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Mutation / Blocker</th><th>Mutations</th><th>P(dCt&gt;8)</th><th>Frequency</th><th>Attribution</th><th>Status</th></tr></thead><tbody id="result-body"></tbody></table></div>
+        <div id="warnings" class="warnings" hidden></div>
+      </section>
+    </section>
+  </main>
+  <script src="app.js?v=20260922-api-errors-2"></script>
+</body>
+</html>
