@@ -204,5 +204,3 @@ Thermodynamic calculation failures also require review before interpreting RF re
 
 Patient-level data and licensed dependencies are not distributed with this
 repository. The hosted example does not grant access to its underlying cohort.
-For implementation details and deployment precautions, see the
-[technical notes](docs/REPRODUCIBILITY.md) and [web documentation](gene_with_order/web/README.md).
